@@ -2,15 +2,25 @@ using Random, StatsBase
 include("utils.jl")
 include("plots.jl")
 
+# TODO-LIST
+
+# Standard VRP:
+# Split cromossome (at most K-1 splits, where K vehicles are available)
+
+# CVRP:
+# Includes capacity of vehicles and demand/loads
+# Will have to penalize not being able to satisfy constraints
+# Maybe 2 subpopulations: feasible and infeasible
+
 # fitness function (inverse of path length)
 distance(i1, i2) = sqrt((i1[1] - i2[1])^2 + (i1[2] - i2[2])^2)
-function fitness(nodes, perm)
+function fitness(depot, nodes, perm)
     N = length(perm)
-    sum_dist = 0
+    sum_dist = distance(depot, nodes[perm[1]])
     for i in 2:N
         sum_dist += distance(nodes[perm[i-1]], nodes[perm[i]])
     end
-    sum_dist += distance(nodes[perm[N]], nodes[perm[1]])
+    sum_dist += distance(nodes[perm[N]], depot)
     return -sum_dist
 end
 
@@ -101,33 +111,36 @@ function mutate(population, elite_size; mutation_probability=0.01, mutation_prob
 end
 
 # GA algorithm
-function run_ga(nodes, population_size, elite_size; crossover_probability=0.75, mutation_probability=0.001, mutation_probability_adjacent=0.005, n_iter=100)
+function run_ga(depot, nodes, population_size, elite_size; crossover_probability=0.75, mutation_probability=0.001, mutation_probability_adjacent=0.005, n_iter=100)
     N = length(nodes)
     population = [randperm(N) for _ in 1:population_size]
     fitness_values = []
     for t in 1:n_iter
-        population_fitness = [fitness(nodes, population[i]) for i in 1:population_size]
+        population_fitness = [fitness(depot, nodes, population[i]) for i in 1:population_size]
         selected_population = tournment_selection(population, population_fitness, elite_size, population_size-elite_size, K=5)
         offspring = breed(selected_population, elite_size; crossover_probability=crossover_probability)
         population = mutate(offspring, elite_size, mutation_probability=mutation_probability, mutation_probability_adjacent=mutation_probability_adjacent)
         push!(fitness_values, maximum(population_fitness))
     end
-    population_fitness = [fitness(nodes, population[i]) for i in 1:population_size]
+    population_fitness = [fitness(depot, nodes, population[i]) for i in 1:population_size]
     sort_order = sortperm(population_fitness, rev=true)
     best = population[sort_order[1]]
     return best, population_fitness[sort_order[1]], fitness_values
 end
 
 dataset_path = (@__DIR__) * "/mpdpsl_instances/Small/"
-instance_name = "mpdpsl10-1"
+instance_name = "mpdpsl25-2"
 file_name = dataset_path * instance_name * ".txt"
 
 # Q (capacity), L (maximum route length), N (number of locations), nodes
 Q, L, N, nodes = read_instance(file_name)
-plot_instance(nodes[1:end])
 
-best, best_fit, fitness_values = run_ga(nodes, 10000, 100, n_iter=100, crossover_probability=0.95, mutation_probability=0.0, mutation_probability_adjacent=0.01)
-fig = plot_path(nodes, best)
+depot = nodes[1]
+nodes = nodes[2:end-1]
+plot_instance(depot, nodes[1:end])
+
+best, best_fit, fitness_values = run_ga(depot, nodes, 10000, 100, n_iter=300, crossover_probability=0.95, mutation_probability=0.05, mutation_probability_adjacent=0.05)
+fig = plot_path(depot, nodes, best)
 best_fit
 
 plot(-fitness_values, label=false, title="Total distance")
