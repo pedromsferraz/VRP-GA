@@ -1,0 +1,12 @@
+How to read the instances:
+
+- The first line is the capacity of the vehicle (Q)
+
+- The second line is the maximum route length (L)
+
+- The third line is the number of pickup and delivery locations. If there are 75 pickup and delivery pairs, the line reads 150.
+
+- The next lines are the locations coordinates (X and Y). Starting at the initial depot location, then lines in between are the coordinates of the pickup and delivery locations and finishing at the coordinates of the final depot location. In summary, if there are n pairs, third line reads 2n, fourth line is the initial depot coordinates, the next n lines are pickup locations, the next n lines are the corresponding delivery locations and the final line is the final depot location.
+
+- The next last lines are the demands of the pickup and delivery pairs in the same order as they appear
+in the coordinates lines.
