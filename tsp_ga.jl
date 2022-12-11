@@ -2,16 +2,6 @@ using Random, StatsBase
 include("utils.jl")
 include("plots.jl")
 
-# TODO-LIST
-
-# Standard VRP:
-# Split cromossome (at most K-1 splits, where K vehicles are available)
-
-# CVRP:
-# Includes capacity of vehicles and demand/loads
-# Will have to penalize not being able to satisfy constraints
-# Maybe 2 subpopulations: feasible and infeasible
-
 # fitness function (inverse of path length)
 distance(i1, i2) = sqrt((i1[1] - i2[1])^2 + (i1[2] - i2[2])^2)
 function fitness(depot, nodes, perm)
