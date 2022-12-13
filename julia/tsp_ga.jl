@@ -119,18 +119,18 @@ function run_ga(depot, nodes, population_size, elite_size; crossover_probability
 end
 
 dataset_path = (@__DIR__) * "/mpdpsl_instances/Small/"
-instance_name = "mpdpsl25-2"
+instance_name = "mpdpsl25-1"
 file_name = dataset_path * instance_name * ".txt"
 
 # Q (capacity), L (maximum route length), N (number of locations), nodes
 Q, L, N, nodes = read_instance(file_name)
 
-depot = nodes[1]
+depot = [50, 50]#nodes[1]
 nodes = nodes[2:end-1]
 plot_instance(depot, nodes[1:end])
 
 best, best_fit, fitness_values = run_ga(depot, nodes, 10000, 100, n_iter=300, crossover_probability=0.95, mutation_probability=0.05, mutation_probability_adjacent=0.05)
-fig = plot_path(depot, nodes, best)
+fig = plot_tsp_path(depot, nodes, best)
 best_fit
 
 plot(-fitness_values, label=false, title="Total distance")

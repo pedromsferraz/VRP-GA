@@ -136,12 +136,12 @@ function mutate_vehicle(v, N, mutation_probability)
 end
 
 function mutate_path(p, mutation_probability, mutation_probability_adjacent)
-    if rand() < mutation_probability
+    if rand() < mutation_probability_adjacent
         pos2 = rand(1:length(p))
         pos1 = (pos2 == 1) ? 2 : pos2-1
         p[pos1], p[pos2] = p[pos2], p[pos1]
     end
-    if rand() < mutation_probability_adjacent
+    if rand() < mutation_probability
         pos2 = rand(1:length(p))
         pos1 = rand(1:length(p))
         p[pos1], p[pos2] = p[pos2], p[pos1]
@@ -182,7 +182,7 @@ function run_ga(depot, nodes, population_size, elite_size, n_vehicles; crossover
 end
 
 dataset_path = (@__DIR__) * "/mpdpsl_instances/Small/"
-instance_name = "mpdpsl25-1"
+instance_name = "mpdpsl10-1"
 file_name = dataset_path * instance_name * ".txt"
 
 # Q (capacity), L (maximum route length), N (number of locations), nodes
@@ -192,10 +192,15 @@ depot = nodes[1]
 nodes = nodes[2:end-1]
 plot_instance(depot, nodes[1:end])
 
-best, best_fit, fitness_values = run_ga(depot, nodes, 10000, 100, 3, n_iter=300, crossover_probability=0.95, mutation_probability=0.005, mutation_probability_adjacent=0.05, uniform_mutation_probability=0.05)
+best, best_fit, fitness_values = run_ga(depot, nodes, 10000, 100, 3, n_iter=300, crossover_probability=0.95, mutation_probability=0.01, mutation_probability_adjacent=0.05, uniform_mutation_probability=0.05)
+fig = plot_tsp_path(depot, nodes, best[2])
 fig = plot_vrp_path(depot, nodes, best)
 best_fit
 
 plot(-fitness_values, label=false, title="Total distance")
 
 savefig(fig, "images/$instance_name.pdf")
+
+route = ([7, 6, 7],[8, 16, 9, 6, 7, 17, 10, 19, 3, 18, 2, 12, 20, 4, 13, 11, 1, 15, 14, 5])
+fitness(depot, nodes, route)
+plot_vrp_path(depot, nodes, route)
