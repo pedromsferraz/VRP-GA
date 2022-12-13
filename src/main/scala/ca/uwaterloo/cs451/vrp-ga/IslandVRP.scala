@@ -60,12 +60,6 @@ object IslandVRP{
     val islands = sc.parallelize(List.range(0, args.islands()))
     val parallelIslands = islands.map(island => {
         // must define all functions for each island
-        
-        def checkPathList(individual: List[Int], loc: String) = {
-            if(individual.sum != 210)
-                println(s"!!!!! Little fucky wucky in $loc !!!!!!")
-        }
-
         def getNode(nodeIdx: Int) : (Int, Int) = {
             return graphData.value._2(nodeIdx)
         }
@@ -74,17 +68,16 @@ object IslandVRP{
             if(p.sum == N)
                 return p
 
-            // winky face
-            val ppSize = p.size
+            val pSize = p.size
             val diff = signum(N - p.sum)
-            var pMod = new ListBuffer[Int]()
+            var pMod = new ArrayBuffer[Int]()
             pMod ++= p
 
             while(pMod.sum != N) {
                 val rand = new scala.util.Random
-                val idx = rand.nextInt(ppSize)
+                val idx = rand.nextInt(pSize)
                 breakable {
-                    if(diff < 0 && pMod(idx) == 0)
+                    if (diff < 0 && pMod(idx) == 0)
                         break
                     else 
                         pMod(idx) += diff
@@ -97,14 +90,15 @@ object IslandVRP{
         val distance = (i1: (Int, Int), i2: (Int, Int)) => sqrt(pow((i1._1 - i2._1), 2) + pow((i1._2 - i2._2), 2))
         def computePathLength(depot: Int, path: List[Int]) : Double = {
             val N = path.length
+            val pathArray = path.toArray
             if(N == 0)
                 return 0
             
-            var totalPathDist = distance(getNode(depot), getNode(path(0)))
+            var totalPathDist = distance(getNode(depot), getNode(pathArray(0)))
             for(nodeInPath <- 1 to N-1) {
-                totalPathDist += distance(getNode(path(nodeInPath-1)), getNode(path(nodeInPath)))
+                totalPathDist += distance(getNode(pathArray(nodeInPath-1)), getNode(pathArray(nodeInPath)))
             }
-            totalPathDist += distance(getNode(path.last), getNode(depot))
+            totalPathDist += distance(getNode(pathArray.last), getNode(depot))
 
             return totalPathDist
         }
@@ -112,7 +106,6 @@ object IslandVRP{
         def fitness(depot: Int, individual: (List[Int],List[Int])) : Double = {
             val vehicles = individual._1
             val tour = individual._2
-            // val N = tour.size
 
             var maxPathCost = -1.0
             var currPathLoc = 0
@@ -130,28 +123,27 @@ object IslandVRP{
 
         def tournamentSelection(population: List[(List[Int],List[Int])], populationFitness: List[Double], eliteSize: Int, randomSelectionSize: Int, k: Int = 5) : List[(List[Int],List[Int])] = {
             val N = population.size
-            val (sortedFitness, populationRanking) = populationFitness.zipWithIndex.sortBy(- _._1).unzip
+            val populationFitnessArray = populationFitness.toArray
+            val (sortedFitness, populationRanking) = populationFitnessArray.zipWithIndex.sortBy(- _._1).unzip
             val elitePopulation = (for (idx <- 0 to eliteSize-1) yield population(populationRanking(idx))).toList
 
-            var randomPopulation = new ListBuffer[(List[Int],List[Int])]()
             val rand = new scala.util.Random
-            for(indiv <- 0 to randomSelectionSize-1) {
+            val randomPopulation = (0 to randomSelectionSize-1).map(indiv => {
                 val competitors = for(indiv <- 1 to k) yield rand.nextInt(N)
-                val competitorFitness = for(c <- competitors) yield populationFitness(c)
+                val competitorFitness = competitors.map(c => populationFitnessArray(c)) 
                 val winner = competitors(competitorFitness.indices.maxBy(competitorFitness))
 
-                randomPopulation.append(population(winner))
-            }
+                population(winner)
+            })
 
             return elitePopulation ++ randomPopulation.toList
         }
 
         // for vehicle crossover
         def uniformCrossover(v1: List[Int], v2: List[Int], N: Int) : List[Int] = {
-
             val vehicleCount = v1.size
-            val flips = for(v <- 1 to vehicleCount) yield (random < 0.5)
-            val child = (for(f <- 0 to flips.size-1) yield if(flips(f)) v1(f) else v2(f)).toList
+            val flips = (1 to vehicleCount).map(_ => random < 0.5)
+            val child = (0 to flips.size-1).map(f => if(flips(f)) v1(f) else v2(f)).toList
             val legalChild = fixPartition(child, N)
 
             return legalChild
@@ -164,11 +156,10 @@ object IslandVRP{
             val (pos1, pos2) = (randPos.min, randPos.max)
 
             val part1 = p1.slice(pos1,pos2)
-            val inter = for(i <- p2) yield if(!part1.contains(i)) i else -1
+            val inter = p2.map(i => if (!part1.contains(i)) i else -1)
             val part2 = inter.filter(_ != -1)
 
             return part2.slice(0, pos1+1) ++ part1 ++ part2.slice(pos1+1, part2.size)
-            // return part1 ++ part2
         }
 
         // full chromosome crossover
@@ -176,30 +167,26 @@ object IslandVRP{
             val N = i1._2.size
             val path = orderCrossover(i1._2, i2._2)
 
-            // checkPathList(path, "crossover")
-
             return (uniformCrossover(i1._1, i2._1, N), path)
         }
 
-        // let's get this bred
         def breed(selectedPopulation: List[(List[Int],List[Int])], eliteSize: Int, crossoverProbability: Double = 0.75) : List[(List[Int],List[Int])] = {
             val N = selectedPopulation.size
+            val selectedPopulationArray = selectedPopulation.toArray
 
-            val nepotism = (for(idx <- 0 to eliteSize-1) yield selectedPopulation(idx)).toList
-            var offspring = new ListBuffer[(List[Int],List[Int])]()
+            val nepotism = (for(idx <- 0 to eliteSize-1) yield selectedPopulationArray(idx)).toList
             val rand = new scala.util.Random
-            for(i <- 1 to N - eliteSize) {
-                if(random < crossoverProbability) {
-                    val p1 = selectedPopulation(rand.nextInt(N))
-                    val p2 = selectedPopulation(rand.nextInt(N))
-                    val child = crossover(p1, p2)
-                    offspring.append(child)
+            val offspring = (1 to N - eliteSize).map(i => {
+                val child = if (random < crossoverProbability) {
+                    val p1 = selectedPopulationArray(rand.nextInt(N))
+                    val p2 = selectedPopulationArray(rand.nextInt(N))
+                    crossover(p1, p2)
                 }
                 else {
-                    val child = selectedPopulation(rand.nextInt(N))
-                    offspring.append(child)
+                    selectedPopulationArray(rand.nextInt(N))
                 }
-            }
+                child
+            })
 
             return nepotism ++ offspring.toList
         }
@@ -208,7 +195,9 @@ object IslandVRP{
             if(random < mutationProbability) {
                 val rand = new scala.util.Random
                 val pos = rand.nextInt(v.size)
-                val vMutated = (for(i <- 0 to v.size-1) yield if(i != pos) v(i) else v.max)
+                val vMax = v.max
+                val vArray = v.toArray
+                val vMutated = (0 to vArray.size-1).map(i => if(i != pos) vArray(i) else vMax)
                 val vLegal = fixPartition(v, N)
 
                 return vLegal
@@ -218,11 +207,11 @@ object IslandVRP{
         }
 
         def mutatePath(p: List[Int], mutationProbability: Double, mutationProbabilityAdjacent: Double) : List[Int] = {
-            var pMut = new ListBuffer[Int]()
+            var pMut = new ArrayBuffer[Int]()
             pMut ++= p
 
             val rand = new scala.util.Random
-            if(random < mutationProbability) {
+            if (random < mutationProbability) {
                 val pos1 = rand.nextInt(pMut.size)
                 val pos2 = rand.nextInt(pMut.size)
 
@@ -231,7 +220,7 @@ object IslandVRP{
                 pMut(pos2) = pTemp
             }
 
-            if(random < mutationProbabilityAdjacent) {
+            if (random < mutationProbabilityAdjacent) {
                 val pos2 = rand.nextInt(pMut.size)
                 val pos1 = if(pos2 == 0) 1 else (pos2 - 1)
 
@@ -245,23 +234,19 @@ object IslandVRP{
 
         def mutate(population: List[(List[Int], List[Int])], eliteSize: Int, mutationProbability: Double = 0.01, mutationProbabilityAdjacent: Double = 0.01, uniformMutationProbability: Double = 0.01) : List[(List[Int], List[Int])] = {
             val elitePopulation = (for(i <- 0 to eliteSize-1) yield population(i)).toList
-
-            var mutatedPopulation = new ListBuffer[(List[Int],List[Int])]()
-            for(idx <- eliteSize to population.size-1) {
-                val indiv = population(idx)
+            
+            var mutatedPopulation = population.slice(eliteSize, population.size).map(indiv => {
                 val N = indiv._2.size
                 val mutatedVehicles = mutateVehicle(indiv._1, N, uniformMutationProbability)
                 val mutatedPath = mutatePath(indiv._2, mutationProbability, mutationProbabilityAdjacent)
-
-                // checkPathList(mutatedPath, "mutation")
                 
-                mutatedPopulation.append((mutatedVehicles, mutatedPath))
-            }
+                (mutatedVehicles, mutatedPath)
+            })
 
             return elitePopulation ++ mutatedPopulation.toList
         } 
 
-        def runGA(depot: Int, populationSize: Int, eliteSize: Int, nVehicles: Int, crossoverProbability: Double = 0.75, mutationProbability: Double = 0.001, mutationProbabilityAdjacent: Double = 0.005, uniformMutationProbability: Double = 0.005, nIter: Int = 100, epsilon: Double = 0.00001) : ((List[Int], List[Int]), List[(List[Int], List[Int])], List[Double]) = {
+        def runGA(depot: Int, populationSize: Int, eliteSize: Int, nVehicles: Int, crossoverProbability: Double = 0.75, mutationProbability: Double = 0.001, mutationProbabilityAdjacent: Double = 0.005, uniformMutationProbability: Double = 0.005, nIter: Int = 100, epsilon: Double = 0.00001, epsilonWindow: Int = 10) : ((List[Int], List[Int]), List[(List[Int], List[Int])], List[Double]) = {
             val N = graphData.value._1(2)
             val part = (for(i <- 1 to nVehicles) yield 0).toList
             val nodes = (for(i <- 1 to N) yield i).toList
@@ -279,9 +264,8 @@ object IslandVRP{
                     population.clear
                     population ++= mutate(offspring, eliteSize, mutationProbability=mutationProbability, mutationProbabilityAdjacent=mutationProbabilityAdjacent, uniformMutationProbability=uniformMutationProbability)
                     val currBestFit = populationFitness.max
-                    if(fitnessValues.size > 10) {
-                        val window = fitnessValues.slice(fitnessValues.size-5, fitnessValues.size).sum / 5
-                        println(s"DIFF: ${currBestFit - window} !!!!")
+                    if (fitnessValues.size > epsilonWindow+5) {
+                        val window = fitnessValues.slice(fitnessValues.size-epsilonWindow, fitnessValues.size).sum / epsilonWindow
                         if(currBestFit - window < epsilon) {
                             fitnessValues.append(currBestFit)
                             break
@@ -293,7 +277,7 @@ object IslandVRP{
             }
 
             val populationListFinal = population.toList
-            val populationFitness = (for(idx <- 0 to populationSize-1) yield fitness(depot,populationListFinal(idx))).toList
+            val populationFitness = (for(idx <- 0 to populationSize-1) yield fitness(depot, populationListFinal(idx))).toList
             val (sortedFitness, populationRanking) = populationFitness.zipWithIndex.sortBy(- _._1).unzip
             val best = populationListFinal(populationRanking(populationRanking(0)))
             fitnessValues.append(populationFitness.max)
@@ -301,9 +285,7 @@ object IslandVRP{
             return (best, populationListFinal, fitnessValues.toList)
         }
 
-        val (best, population, fitnessOverIter) = runGA(0, 10000, 100, 3, nIter=100, crossoverProbability=0.95, mutationProbability=0.005, mutationProbabilityAdjacent=0.05, uniformMutationProbability=0.05)
-        
-
+        val (best, population, fitnessOverIter) = runGA(0, 5000, 100, 3, nIter=100, crossoverProbability=0.95, mutationProbability=0.005, mutationProbabilityAdjacent=0.05, uniformMutationProbability=0.05)
         population.take(survivorCount.value)
     }).persist
 
@@ -311,8 +293,8 @@ object IslandVRP{
     parallelIslands.collect.foreach(survivors => {
         pops.append(survivors.to[ArrayBuffer])
     })
-    if(args.islands() < 3) {
-        for(idx <- 0 to pops.length - 1) {
+    if (args.islands() > 3) {
+        for (idx <- 0 to pops.length - 1) {
             val rand = new scala.util.Random
             val islands = Random.shuffle((0 to pops.length - 1).filter(_ != idx))
             val island1 = islands(0)
@@ -328,11 +310,7 @@ object IslandVRP{
     }
 
     val newIslands = sc.parallelize(pops).map(survivors => {
-        def checkPathList(individual: List[Int], loc: String) = {
-            if(individual.sum != 210)
-                println(s"!!!!! Little fucky wucky in $loc !!!!!!")
-        }
-
+        // must define all functions for each island
         def getNode(nodeIdx: Int) : (Int, Int) = {
             return graphData.value._2(nodeIdx)
         }
@@ -341,17 +319,16 @@ object IslandVRP{
             if(p.sum == N)
                 return p
 
-            // winky face
-            val ppSize = p.size
+            val pSize = p.size
             val diff = signum(N - p.sum)
-            var pMod = new ListBuffer[Int]()
+            var pMod = new ArrayBuffer[Int]()
             pMod ++= p
 
             while(pMod.sum != N) {
                 val rand = new scala.util.Random
-                val idx = rand.nextInt(ppSize)
+                val idx = rand.nextInt(pSize)
                 breakable {
-                    if(diff < 0 && pMod(idx) == 0)
+                    if (diff < 0 && pMod(idx) == 0)
                         break
                     else 
                         pMod(idx) += diff
@@ -364,14 +341,15 @@ object IslandVRP{
         val distance = (i1: (Int, Int), i2: (Int, Int)) => sqrt(pow((i1._1 - i2._1), 2) + pow((i1._2 - i2._2), 2))
         def computePathLength(depot: Int, path: List[Int]) : Double = {
             val N = path.length
+            val pathArray = path.toArray
             if(N == 0)
                 return 0
             
-            var totalPathDist = distance(getNode(depot), getNode(path(0)))
+            var totalPathDist = distance(getNode(depot), getNode(pathArray(0)))
             for(nodeInPath <- 1 to N-1) {
-                totalPathDist += distance(getNode(path(nodeInPath-1)), getNode(path(nodeInPath)))
+                totalPathDist += distance(getNode(pathArray(nodeInPath-1)), getNode(pathArray(nodeInPath)))
             }
-            totalPathDist += distance(getNode(path.last), getNode(depot))
+            totalPathDist += distance(getNode(pathArray.last), getNode(depot))
 
             return totalPathDist
         }
@@ -379,7 +357,6 @@ object IslandVRP{
         def fitness(depot: Int, individual: (List[Int],List[Int])) : Double = {
             val vehicles = individual._1
             val tour = individual._2
-            // val N = tour.size
 
             var maxPathCost = -1.0
             var currPathLoc = 0
@@ -397,28 +374,27 @@ object IslandVRP{
 
         def tournamentSelection(population: List[(List[Int],List[Int])], populationFitness: List[Double], eliteSize: Int, randomSelectionSize: Int, k: Int = 5) : List[(List[Int],List[Int])] = {
             val N = population.size
-            val (sortedFitness, populationRanking) = populationFitness.zipWithIndex.sortBy(- _._1).unzip
+            val populationFitnessArray = populationFitness.toArray
+            val (sortedFitness, populationRanking) = populationFitnessArray.zipWithIndex.sortBy(- _._1).unzip
             val elitePopulation = (for (idx <- 0 to eliteSize-1) yield population(populationRanking(idx))).toList
 
-            var randomPopulation = new ListBuffer[(List[Int],List[Int])]()
             val rand = new scala.util.Random
-            for(indiv <- 0 to randomSelectionSize-1) {
+            val randomPopulation = (0 to randomSelectionSize-1).map(indiv => {
                 val competitors = for(indiv <- 1 to k) yield rand.nextInt(N)
-                val competitorFitness = for(c <- competitors) yield populationFitness(c)
+                val competitorFitness = competitors.map(c => populationFitnessArray(c)) 
                 val winner = competitors(competitorFitness.indices.maxBy(competitorFitness))
 
-                randomPopulation.append(population(winner))
-            }
+                population(winner)
+            })
 
             return elitePopulation ++ randomPopulation.toList
         }
 
         // for vehicle crossover
         def uniformCrossover(v1: List[Int], v2: List[Int], N: Int) : List[Int] = {
-
             val vehicleCount = v1.size
-            val flips = for(v <- 1 to vehicleCount) yield (random < 0.5)
-            val child = (for(f <- 0 to flips.size-1) yield if(flips(f)) v1(f) else v2(f)).toList
+            val flips = (1 to vehicleCount).map(_ => random < 0.5)
+            val child = (0 to flips.size-1).map(f => if(flips(f)) v1(f) else v2(f)).toList
             val legalChild = fixPartition(child, N)
 
             return legalChild
@@ -431,11 +407,10 @@ object IslandVRP{
             val (pos1, pos2) = (randPos.min, randPos.max)
 
             val part1 = p1.slice(pos1,pos2)
-            val inter = for(i <- p2) yield if(!part1.contains(i)) i else -1
+            val inter = p2.map(i => if (!part1.contains(i)) i else -1)
             val part2 = inter.filter(_ != -1)
 
             return part2.slice(0, pos1+1) ++ part1 ++ part2.slice(pos1+1, part2.size)
-            // return part1 ++ part2
         }
 
         // full chromosome crossover
@@ -443,29 +418,25 @@ object IslandVRP{
             val N = i1._2.size
             val path = orderCrossover(i1._2, i2._2)
 
-            // checkPathList(path, "crossover")
-
             return (uniformCrossover(i1._1, i2._1, N), path)
         }
 
-        // let's get this bred
         def breed(N: Int, selectedPopulation: List[(List[Int],List[Int])], eliteSize: Int, crossoverProbability: Double = 0.75) : List[(List[Int],List[Int])] = {
-            val nepotism = (for(idx <- 0 to eliteSize-1) yield selectedPopulation(idx)).toList
-            var offspring = new ListBuffer[(List[Int],List[Int])]()
+            val selectedPopulationArray = selectedPopulation.toArray
+            val selectedPopulationArraySize = selectedPopulationArray.size
+            val nepotism = (for(idx <- 0 to eliteSize-1) yield selectedPopulationArray(idx)).toList
             val rand = new scala.util.Random
-            for(i <- 1 to N - eliteSize) {
-                if(random < crossoverProbability) {
-                    val p1 = selectedPopulation(rand.nextInt(selectedPopulation.size))
-                    val p2 = selectedPopulation(rand.nextInt(selectedPopulation.size))
-                    val child = crossover(p1, p2)
-                    offspring.append(child)
+            val offspring = (1 to N - eliteSize).map(i => {
+                val child = if (random < crossoverProbability) {
+                    val p1 = selectedPopulationArray(rand.nextInt(selectedPopulationArraySize))
+                    val p2 = selectedPopulationArray(rand.nextInt(selectedPopulationArraySize))
+                    crossover(p1, p2)
                 }
                 else {
-                    val child = selectedPopulation(rand.nextInt(selectedPopulation.size))
-                    offspring.append(child)
+                    selectedPopulationArray(rand.nextInt(selectedPopulationArraySize))
                 }
-            }
-
+                child
+            })
             return nepotism ++ offspring.toList
         }
 
@@ -473,7 +444,9 @@ object IslandVRP{
             if(random < mutationProbability) {
                 val rand = new scala.util.Random
                 val pos = rand.nextInt(v.size)
-                val vMutated = (for(i <- 0 to v.size-1) yield if(i != pos) v(i) else v.max)
+                val vMax = v.max
+                val vArray = v.toArray
+                val vMutated = (0 to vArray.size-1).map(i => if(i != pos) vArray(i) else vMax)
                 val vLegal = fixPartition(v, N)
 
                 return vLegal
@@ -483,11 +456,11 @@ object IslandVRP{
         }
 
         def mutatePath(p: List[Int], mutationProbability: Double, mutationProbabilityAdjacent: Double) : List[Int] = {
-            var pMut = new ListBuffer[Int]()
+            var pMut = new ArrayBuffer[Int]()
             pMut ++= p
 
             val rand = new scala.util.Random
-            if(random < mutationProbability) {
+            if (random < mutationProbability) {
                 val pos1 = rand.nextInt(pMut.size)
                 val pos2 = rand.nextInt(pMut.size)
 
@@ -496,7 +469,7 @@ object IslandVRP{
                 pMut(pos2) = pTemp
             }
 
-            if(random < mutationProbabilityAdjacent) {
+            if (random < mutationProbabilityAdjacent) {
                 val pos2 = rand.nextInt(pMut.size)
                 val pos1 = if(pos2 == 0) 1 else (pos2 - 1)
 
@@ -510,27 +483,23 @@ object IslandVRP{
 
         def mutate(population: List[(List[Int], List[Int])], eliteSize: Int, mutationProbability: Double = 0.01, mutationProbabilityAdjacent: Double = 0.01, uniformMutationProbability: Double = 0.01) : List[(List[Int], List[Int])] = {
             val elitePopulation = (for(i <- 0 to eliteSize-1) yield population(i)).toList
-
-            var mutatedPopulation = new ListBuffer[(List[Int],List[Int])]()
-            for(idx <- eliteSize to population.size-1) {
-                val indiv = population(idx)
+            
+            var mutatedPopulation = population.slice(eliteSize, population.size).map(indiv => {
                 val N = indiv._2.size
                 val mutatedVehicles = mutateVehicle(indiv._1, N, uniformMutationProbability)
                 val mutatedPath = mutatePath(indiv._2, mutationProbability, mutationProbabilityAdjacent)
-
-                // checkPathList(mutatedPath, "mutation")
                 
-                mutatedPopulation.append((mutatedVehicles, mutatedPath))
-            }
+                (mutatedVehicles, mutatedPath)
+            })
 
             return elitePopulation ++ mutatedPopulation.toList
         } 
 
-        def runMigratedGA(currPop: List[(List[Int],List[Int])], depot: Int, populationSize: Int, eliteSize: Int, nVehicles: Int, crossoverProbability: Double = 0.75, mutationProbability: Double = 0.001, mutationProbabilityAdjacent: Double = 0.005, uniformMutationProbability: Double = 0.005, nIter: Int = 100, epsilon: Double = 0.00001) : ((List[Int], List[Int]), List[(List[Int], List[Int])], List[Double]) = {
+        def runMigratedGA(currPop: List[(List[Int],List[Int])], depot: Int, populationSize: Int, eliteSize: Int, nVehicles: Int, crossoverProbability: Double = 0.75, mutationProbability: Double = 0.001, mutationProbabilityAdjacent: Double = 0.005, uniformMutationProbability: Double = 0.005, nIter: Int = 100, epsilon: Double = 0.00001, epsilonWindow: Int = 10) : ((List[Int], List[Int]), List[(List[Int], List[Int])], List[Double]) = {
             var population = currPop.to[ListBuffer]
             var fitnessValues = new ListBuffer[Double]()
             breakable {
-                for(t <- 1 to nIter) {
+                for (t <- 1 to nIter) {
                     val populationList = population.toList
                     val populationFitness = (for(idx <- 0 to populationSize-1) yield fitness(depot,populationList(idx))).toList
                     val selectedPopulation = tournamentSelection(populationList, populationFitness, eliteSize, populationSize-eliteSize, k=5)
@@ -538,9 +507,8 @@ object IslandVRP{
                     population.clear
                     population ++= mutate(offspring, eliteSize, mutationProbability=mutationProbability, mutationProbabilityAdjacent=mutationProbabilityAdjacent, uniformMutationProbability=uniformMutationProbability)
                     val currBestFit = populationFitness.max
-                    if(fitnessValues.size > 10) {
-                        val window = fitnessValues.slice(fitnessValues.size-5, fitnessValues.size).sum / 5
-                        println(s"DIFF: ${currBestFit - window} !!!!")
+                    if (fitnessValues.size > epsilonWindow+5) {
+                        val window = fitnessValues.slice(fitnessValues.size-epsilonWindow, fitnessValues.size).sum / epsilonWindow
                         if(currBestFit - window < epsilon) {
                             fitnessValues.append(currBestFit)
                             break
@@ -560,8 +528,8 @@ object IslandVRP{
         }
 
         val listOfSurvivors = survivors.toList
-        val newPopulation = breed(survivorCount.value * 10, listOfSurvivors, survivorCount.value, crossoverProbability=0.95)
-        val (best, populationList, fitnessValues) = runMigratedGA(newPopulation, 0, survivorCount.value * 10, (ceil(survivorCount.value / 10)).toInt, 3, nIter=50, crossoverProbability=0.95, mutationProbability=0.005, mutationProbabilityAdjacent=0.05, uniformMutationProbability=0.05)
+        val newPopulation = breed(survivorCount.value * 5, listOfSurvivors, survivorCount.value, crossoverProbability=0.95)
+        val (best, populationList, fitnessValues) = runMigratedGA(newPopulation, 0, survivorCount.value * 5, (ceil(survivorCount.value / 10)).toInt, 3, nIter=50, crossoverProbability=0.95, mutationProbability=0.005, mutationProbabilityAdjacent=0.05, uniformMutationProbability=0.05)
 
         (fitnessValues.last, best)
     })
