@@ -201,6 +201,21 @@ plot(-fitness_values, label=false, title="Total distance")
 
 savefig(fig, "images/$instance_name.pdf")
 
-route = ([7, 6, 7],[8, 16, 9, 6, 7, 17, 10, 19, 3, 18, 2, 12, 20, 4, 13, 11, 1, 15, 14, 5])
-fitness(depot, nodes, route)
-plot_vrp_path(depot, nodes, route)
+depot, nodes = instance_generator(25, 3, sigma=4000)
+plot_instance(depot, nodes)
+best, best_fit, fitness_values = run_ga(depot, nodes, 5000, 10, 5, n_iter=1000, crossover_probability=0.95, mutation_probability=0.05, mutation_probability_adjacent=0.05, uniform_mutation_probability=0.05)
+fig = plot_vrp_path(depot, nodes, best)
+
+depot, nodes = uniform_instance_generator(100)
+plot_instance(depot, nodes)
+
+instance_name = "uniform-1"
+Q, L, N, nodes = read_instance(dataset_path * instance_name * ".txt")
+depot = nodes[1]
+nodes = nodes[2:end-1]
+plot_instance(depot, nodes)
+
+best, fitness_values = read_solution("julia/solution-$instance_name.txt")
+fig = plot_vrp_path(depot, nodes, best)
+fig = plot(-fitness_values, label=false, title="Path cost")
+Plots.savefig(fig, "images/fitness_$instance_name.pdf")

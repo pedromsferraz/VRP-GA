@@ -25,11 +25,7 @@ object IterativeIslands{
     val args = new IslandConf(argv)
     val conf = new SparkConf()
         .setAppName("Running Islands")
-        // .set("spark.executor.instances", 4)
-        .set("spark.shuffle.service.enabled", "true")
-        .set("spark.dynamicAllocation.enabled", "true")
-        .set("spark.executor.cores", "4")
-        .set("spark.dynamicAllocation.minExecutors", "4")
+
     val sc = new SparkContext(conf)
 
     val outputDir = new Path(args.output())
@@ -291,7 +287,9 @@ object IterativeIslands{
         }
 
         val (best, population, fitnessOverIter) = runGA(0, 5000, 100, 3, nIter=50, crossoverProbability=0.95, mutationProbability=0.005, mutationProbabilityAdjacent=0.05, uniformMutationProbability=0.05)
+
         (island, population.take(survivorCount.value), fitnessOverIter)
+        population.take(survivorCount.value)
     })
 
     // each iteration will trigger a migration after 50 generations on each island
@@ -308,6 +306,7 @@ object IterativeIslands{
             for (idx <- 0 to args.islands()-1) {
                 val rand = new scala.util.Random
                 val islands = Random.shuffle((0 to args.islands() - 1).filter(_ != idx))
+
                 val island1 = islands(0)
                 val island2 = islands(1)
 
@@ -553,7 +552,6 @@ object IterativeIslands{
       }
       else {
         log.info("!!! Beginning Final Epoch !!!")
-
         val finalIslands = sc.parallelize(pops.toList).map(data => {
             val island = data._1
             val survivors = data._2
