@@ -16,6 +16,8 @@ import scala.util.Random
 
 import util.control.Breaks._
 
+import java.io._
+
 object IterativeIslands{
   val log = Logger.getLogger(getClass().getName())
 
@@ -789,8 +791,14 @@ object IterativeIslands{
                 bestAns = data._2
             }
         }
-        val test = sc.parallelize(List[Any](bestAns, islandFitness))
+        val test = sc.parallelize(List[Any](bestAns, islandFitness.toList))
         test.saveAsTextFile(args.output())
+        val pw = new PrintWriter(new File(s"${args.output()}/forPlot.txt" ))
+        pw.write(bestAns.toString + "\n")
+        for(i <- islandFitness) {
+            pw.write(i._1 + ", " + i._2.toString + "\n")
+        }
+        pw.close
         // finalIslands.saveAsTextFile(args.output())
       }
       }
