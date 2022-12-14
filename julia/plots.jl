@@ -8,6 +8,7 @@ function plot_instance(depot, points; instance_name="instance")
     # path = "images/"
     # mkpath(path)
     # Plots.savefig(plot, path * "$instance_name.pdf")
+    return plot
 end
 
 function plot_tsp_path(depot, nodes, perm)
@@ -28,11 +29,12 @@ function plot_path(depot, nodes, perm; color="black")
     if length(perm) == 0
         return
     end
-    plot!([depot[1], path[1][1]], [depot[2], path[1][2]], color=color, arrow=true)
+    fig = plot!([depot[1], path[1][1]], [depot[2], path[1][2]], color=color, arrow=true)
     for i in 2:N
-        plot!([path[i-1][1], path[i][1]], [path[i-1][2], path[i][2]], color=color, arrow=true)
+        fig = plot!([path[i-1][1], path[i][1]], [path[i-1][2], path[i][2]], color=color, arrow=true)
     end
-    plot!([path[N][1], depot[1]], [path[N][2], depot[2]], color=color, arrow=true)
+    fig = plot!([path[N][1], depot[1]], [path[N][2], depot[2]], color=color, arrow=true)
+    return fig
 end
 
 function plot_vrp_path(depot, nodes, route)
@@ -42,13 +44,17 @@ function plot_vrp_path(depot, nodes, route)
     paths = []
     cur = 1
     for v in vehicles
-        push!(paths, tour[cur:cur+v-1])
+        fig = push!(paths, tour[cur:cur+v-1])
         cur = cur+v
     end
 
     for (i, path) in enumerate(paths)
-        plot_path(depot, nodes, path; color=i)
+        fig = plot_path(depot, nodes, path; color=i)
     end
+
+    path = "images/"
+    mkpath(path)
+    Plots.savefig(fig, path * "$instance_name.pdf")
 
     return fig
 end
