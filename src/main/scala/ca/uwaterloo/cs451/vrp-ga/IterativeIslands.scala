@@ -16,6 +16,8 @@ import scala.util.Random
 
 import util.control.Breaks._
 
+import java.io._
+
 object IterativeIslands{
   val log = Logger.getLogger(getClass().getName())
 
@@ -23,10 +25,21 @@ object IterativeIslands{
     val args = new IslandConf(argv)
     val conf = new SparkConf()
         .setAppName("Running Islands")
+        // .set("spark.executor.instances", 4)
+        .set("spark.shuffle.service.enabled", "true")
+        .set("spark.dynamicAllocation.enabled", "true")
+        .set("spark.executor.cores", "4")
+        .set("spark.dynamicAllocation.minExecutors", "4")
     val sc = new SparkContext(conf)
 
     val outputDir = new Path(args.output())
     FileSystem.get(sc.hadoopConfiguration).delete(outputDir, true)
+
+    // this will hold all island fitness data
+    var islandFitness = scala.collection.mutable.Map[Int,ArrayBuffer[Double]]()
+    for (i <- 0 to args.islands() - 1) {
+        islandFitness(i) = ArrayBuffer[Double]()
+    }
 
     def readInstance(filePath: String) : (List[Int],List[(Int, Int)]) = {
         val bufferedSource = scala.io.Source.fromFile(filePath)
@@ -278,22 +291,23 @@ object IterativeIslands{
         }
 
         val (best, population, fitnessOverIter) = runGA(0, 5000, 100, 3, nIter=50, crossoverProbability=0.95, mutationProbability=0.005, mutationProbabilityAdjacent=0.05, uniformMutationProbability=0.05)
-        population.take(survivorCount.value)
+        (island, population.take(survivorCount.value), fitnessOverIter)
     })
 
     // each iteration will trigger a migration after 50 generations on each island
     val numEpochs = 5 
     for(i <- 1 to numEpochs) {
-      if(i < numEpochs) {
-        log.info(s"!!! Beginning Epoch $i !!!")
-        var pops = ArrayBuffer[ArrayBuffer[(List[Int], List[Int])]]()
-        parallelIslands.collect.foreach(survivors => {
-            pops.append(survivors.to[ArrayBuffer])
+        var pops = scala.collection.mutable.Map[Int, ArrayBuffer[(List[Int], List[Int])]]()
+        for(j <- 0 to args.islands() - 1) pops(j) = ArrayBuffer[(List[Int], List[Int])]()
+        parallelIslands.collect.foreach(data => {
+            println(s"MOVING ISLAND ${data._1}")
+            islandFitness(data._1) ++= data._3
+            pops(data._1) = data._2.to[ArrayBuffer]
         })
         if (args.islands() >= 3) {
-            for (idx <- 0 to pops.length - 1) {
+            for (idx <- 0 to args.islands()-1) {
                 val rand = new scala.util.Random
-                val islands = Random.shuffle((0 to pops.length - 1).filter(_ != idx))
+                val islands = Random.shuffle((0 to args.islands() - 1).filter(_ != idx))
                 val island1 = islands(0)
                 val island2 = islands(1)
 
@@ -306,7 +320,12 @@ object IterativeIslands{
             }
         }
 
-        parallelIslands = sc.parallelize(pops).map(survivors => {
+      if(i < numEpochs) {
+        log.info(s"!!! Beginning Epoch $i !!!")
+        parallelIslands = sc.parallelize(pops.toList).map(data => {
+            val island = data._1
+            val survivors = data._2
+            // println(s"SIZE OF DATA FROM TUPLE: ${data._2.size}")
             // must define all functions for each island
             def getNode(nodeIdx: Int) : (Int, Int) = {
                 return graphData.value._2(nodeIdx)
@@ -528,33 +547,16 @@ object IterativeIslands{
             val newPopulation = breed(survivorCount.value * 5, listOfSurvivors, survivorCount.value, crossoverProbability=0.95)
             val (best, population, fitnessValues) = runMigratedGA(newPopulation, 0, survivorCount.value * 5, (ceil(survivorCount.value / 10)).toInt, 3, nIter=50, crossoverProbability=0.95, mutationProbability=0.005, mutationProbabilityAdjacent=0.05, uniformMutationProbability=0.05)
 
-            population.take(survivorCount.value)
+            (island, population.take(survivorCount.value), fitnessValues)
             // (fitnessValues.last, best)
         })
       }
       else {
         log.info("!!! Beginning Final Epoch !!!")
-        var pops = ArrayBuffer[ArrayBuffer[(List[Int], List[Int])]]()
-        parallelIslands.collect.foreach(survivors => {
-            pops.append(survivors.to[ArrayBuffer])
-        })
-        if (args.islands() >= 3) {
-            for (idx <- 0 to pops.length - 1) {
-                val rand = new scala.util.Random
-                val islands = Random.shuffle((0 to pops.length - 1).filter(_ != idx))
-                val island1 = islands(0)
-                val island2 = islands(1)
 
-                // must ensure that we migrate slices proportional to survivorCount
-                val migrationCount = floor(survivorCount.value / 10).toInt
-
-                pops(idx) = pops(idx).dropRight(migrationCount * 2)
-                pops(idx) ++= pops(island1).take(migrationCount)
-                pops(idx) ++= pops(island2).take(migrationCount)
-            }
-        }
-
-        val finalIslands = sc.parallelize(pops).map(survivors => {
+        val finalIslands = sc.parallelize(pops.toList).map(data => {
+            val island = data._1
+            val survivors = data._2
             // must define all functions for each island
             def getNode(nodeIdx: Int) : (Int, Int) = {
                 return graphData.value._2(nodeIdx)
@@ -774,12 +776,30 @@ object IterativeIslands{
 
             val listOfSurvivors = survivors.toList
             val newPopulation = breed(survivorCount.value * 5, listOfSurvivors, survivorCount.value, crossoverProbability=0.95)
-            val (best, population, fitnessValues) = runMigratedGA(newPopulation, 0, survivorCount.value * 5, (ceil(survivorCount.value / 10)).toInt, 3, nIter=50, crossoverProbability=0.95, mutationProbability=0.005, mutationProbabilityAdjacent=0.05, uniformMutationProbability=0.05)
+            val (best, population, fitnessValues) = runMigratedGA(newPopulation, 0, survivorCount.value * 5, (ceil(survivorCount.value / 10)).toInt, 3, nIter=500, crossoverProbability=0.95, mutationProbability=0.005, mutationProbabilityAdjacent=0.05, uniformMutationProbability=0.05)
 
-            (fitnessValues.last, best)
+            (island, best, fitnessValues, fitnessValues.last)
         })
-
-        finalIslands.saveAsTextFile(args.output())
+        var bestIsland = -1
+        var bestFitness = 0.0
+        var bestAns = (List[Int](), List[Int]())
+        for(data <- finalIslands.collect) {
+            islandFitness(data._1) ++= data._3
+            if(bestIsland == -1 || data._4 > bestFitness) {
+                bestIsland = data._1
+                bestFitness = data._4
+                bestAns = data._2
+            }
+        }
+        val test = sc.parallelize(List[Any](bestAns, islandFitness.toList))
+        test.saveAsTextFile(args.output())
+        val pw = new PrintWriter(new File(s"${args.output()}/forPlot.txt" ))
+        pw.write(bestAns.toString + "\n")
+        for(i <- islandFitness) {
+            pw.write(i._1 + ", " + i._2.toString + "\n")
+        }
+        pw.close
+        // finalIslands.saveAsTextFile(args.output())
       }
       }
     }
